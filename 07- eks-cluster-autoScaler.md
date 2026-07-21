@@ -28,6 +28,74 @@ This command provides information about the current node group, including its sc
 ### **Step 2: Attach IAM Policy for Cluster Autoscaler**  
 EKS worker nodes need proper IAM permissions to manage Auto Scaling Groups (ASG). Attach the **AmazonEKSClusterAutoscalerPolicy** to the IAM role of your worker nodes.
 
+### **Why is Ingress Widely Used? (Advantages of Ingress)**  
+Ingress is widely used in Kubernetes because it provides a centralized way to manage external access to services. Instead of creating multiple LoadBalancers or NodePort services, Ingress offers a scalable and efficient way to expose applications.
+
+
+## Step 2.1: Create an IAM OIDC Provider for Your Cluster
+
+Set your cluster name in an environment variable:
+
+```bash
+cluster_name=ekswithavinash
+```
+
+Extract the OIDC ID from your cluster:
+
+```bash
+oidc_id=$(aws eks describe-cluster --name $cluster_name --query "cluster.identity.oidc.issuer" --output text | cut -d '/' -f 5)
+echo $oidc_id
+```
+
+Check if an IAM OIDC provider already exists for your cluster:
+
+```bash
+aws iam list-open-id-connect-providers | grep $oidc_id | cut -d "/" -f4
+```
+
+- **If output is returned:** You already have an IAM OIDC provider and can skip the next step.
+- **If no output is returned:** Create an IAM OIDC provider for your cluster:
+
+```bash
+eksctl utils associate-iam-oidc-provider --cluster ekswithavinash --approve
+```
+
+---
+### 2.2 – Download and Create the IAM Policy
+
+Download the IAM policy required for the AWS Load Balancer Controller:
+
+```bash
+curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.11.0/docs/install/iam_policy.json
+```
+
+Create the IAM policy:
+
+```bash
+aws iam create-policy \
+    --policy-name AWSLoadBalancerControllerIAMPolicy \
+    --policy-document file://iam_policy.json
+```
+
+### 2.3 – Create the IAM Service Account
+Create the IAM service account for the AWS Load Balancer Controller using `eksctl`. This command attaches the policy to the service account and (if it exists) overrides the existing service account:
+
+```bash
+eksctl create iamserviceaccount \
+    --cluster=ekswithavinash \
+    --namespace=kube-system \
+    --name=aws-load-balancer-controller \
+    --attach-policy-arn=arn:aws:iam::<<account-id>>:policy/AWSLoadBalancerControllerIAMPolicy \
+    --override-existing-serviceaccounts \
+    --region ap-south-1 \
+    --approve
+```
+
+
+---
+
+
+
 ---
 
 ### **Step 3: Install Cluster Autoscaler using Helm**  
