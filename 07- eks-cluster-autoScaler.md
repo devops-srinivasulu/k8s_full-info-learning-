@@ -88,8 +88,11 @@ eksctl create iamserviceaccount \
 ```
 ###2.4 check service account 
 
-'''bash
+```bash
+
 kubectl get serviceaccounts -n kube-system
+
+```
 
 ---
 
