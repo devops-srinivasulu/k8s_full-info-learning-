@@ -86,7 +86,10 @@ eksctl create iamserviceaccount \
     --region ap-south-1 \
     --approve
 ```
+###2.4 check service account 
 
+'''bash
+kubectl get serviceaccounts -n kube-system
 
 ---
 
