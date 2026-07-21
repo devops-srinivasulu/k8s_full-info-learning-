@@ -28,10 +28,6 @@ This command provides information about the current node group, including its sc
 ### **Step 2: Attach IAM Policy for Cluster Autoscaler**  
 EKS worker nodes need proper IAM permissions to manage Auto Scaling Groups (ASG). Attach the **AmazonEKSClusterAutoscalerPolicy** to the IAM role of your worker nodes.
 
-### **Why is Ingress Widely Used? (Advantages of Ingress)**  
-Ingress is widely used in Kubernetes because it provides a centralized way to manage external access to services. Instead of creating multiple LoadBalancers or NodePort services, Ingress offers a scalable and efficient way to expose applications.
-
-
 ## Step 2.1: Create an IAM OIDC Provider for Your Cluster
 
 Set your cluster name in an environment variable:
