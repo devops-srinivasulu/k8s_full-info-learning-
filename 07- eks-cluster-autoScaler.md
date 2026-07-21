@@ -100,6 +100,70 @@ kubectl get serviceaccounts -n kube-system
 
 ---
 
+###Helm installation 
+If you're using **Ubuntu** (EC2 instance or your local Ubuntu machine), these are the standard Helm installation steps.
+
+---
+
+# Step 1: Download the Helm installation script
+
+```bash
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+```
+
+### Why?
+
+This downloads the official Helm installation script maintained by the Helm project.
+
+---
+
+# Step 2: Give execute permission
+
+```bash
+chmod 700 get_helm.sh
+```
+
+### Why?
+
+By default, the downloaded file isn't executable. This command allows you to run it.
+
+---
+
+# Step 3: Install Helm
+
+```bash
+./get_helm.sh
+```
+
+### Why?
+
+The script:
+
+* Downloads the latest stable Helm binary.
+* Places it in `/usr/local/bin/helm`.
+* Makes it executable.
+
+---
+
+# Step 4: Verify the installation
+
+```bash
+helm version
+```
+
+Example output:
+
+```text
+version.BuildInfo{
+Version:"v3.18.4",
+GitCommit:"...",
+GitTreeState:"clean",
+GoVersion:"go1.24.x"
+}
+```
+
+---
+
 ### **Step 3: Install Cluster Autoscaler using Helm**  
 Deploy Cluster Autoscaler using Helm, which simplifies the installation process.
 
