@@ -60,73 +60,114 @@ if not exist create names policy "AmazonEKSClusterAutoscalerPolicy"
   ]
 }
 ```
-## Step 2.1: Create an IAM OIDC Provider for Your Cluster
+Yes. Let's do it **the correct production way**.
 
-Set your cluster name in an environment variable:
+---
+
+# Step 1: Make sure the OIDC provider is associated
 
 ```bash
-cluster_name=ekswithavinash
+eksctl utils associate-iam-oidc-provider \
+  --cluster srinivas \
+  --region us-east-1 \
+  --approve
 ```
 
-Extract the OIDC ID from your cluster:
+**Why?**
+
+IRSA (IAM Roles for Service Accounts) requires an OIDC provider. If it's already associated, `eksctl` will tell you.
+
+---
+
+# Step 2: Download the IAM policy for Cluster Autoscaler
 
 ```bash
-oidc_id=$(aws eks describe-cluster --name $cluster_name --query "cluster.identity.oidc.issuer" --output text | cut -d '/' -f 5)
-echo $oidc_id
+curl -O https://raw.githubusercontent.com/kubernetes/autoscaler/master/cluster-autoscaler/cloudprovider/aws/examples/iam-policy.json
 ```
 
-Check if an IAM OIDC provider already exists for your cluster:
+This downloads:
 
-```bash
-aws iam list-open-id-connect-providers | grep $oidc_id | cut -d "/" -f4
-```
-
-- **If output is returned:** You already have an IAM OIDC provider and can skip the next step.
-- **If no output is returned:** Create an IAM OIDC provider for your cluster:
-
-```bash
-eksctl utils associate-iam-oidc-provider --cluster ekswithavinash --approve
+```text
+iam-policy.json
 ```
 
 ---
-### 2.2 – Download and Create the IAM Policy
 
-Download the IAM policy required for the AWS Load Balancer Controller:
-
-```bash
-curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.11.0/docs/install/iam_policy.json
-```
-
-Create the IAM policy:
+# Step 3: Create the IAM Policy
 
 ```bash
 aws iam create-policy \
-    --policy-name AWSLoadBalancerControllerIAMPolicy \
-    --policy-document file://iam_policy.json
+  --policy-name AmazonEKSClusterAutoscalerPolicy \
+  --policy-document file://iam-policy.json
 ```
 
-### 2.3 – Create the IAM Service Account
-Create the IAM service account for the AWS Load Balancer Controller using `eksctl`. This command attaches the policy to the service account and (if it exists) overrides the existing service account:
+After it succeeds, you'll get output similar to:
 
-```bash
-eksctl create iamserviceaccount \
-    --cluster=ekswithavinash \
-    --namespace=kube-system \
-    --name=aws-load-balancer-controller \
-    --attach-policy-arn=arn:aws:iam::<<account-id>>:policy/AWSLoadBalancerControllerIAMPolicy \
-    --override-existing-serviceaccounts \
-    --region ap-south-1 \
-    --approve
+```text
+arn:aws:iam::724516859343:policy/AmazonEKSClusterAutoscalerPolicy
 ```
-###2.4 check service account 
+
+This ARN is needed in the next step.
+
+If you already created the policy, verify it:
 
 ```bash
-
-kubectl get serviceaccounts -n kube-system
-
+aws iam list-policies --scope Local
 ```
 
 ---
+
+# Step 4: Create the IAM ServiceAccount
+
+```bash
+eksctl create iamserviceaccount \
+  --cluster=srinivas \
+  --region=us-east-1 \
+  --namespace=kube-system \
+  --name=cluster-autoscaler \
+  --attach-policy-arn=arn:aws:iam::724516859343:policy/AmazonEKSClusterAutoscalerPolicy \
+  --override-existing-serviceaccounts \
+  --approve
+```
+
+### What this command creates
+
+```text
+IAM Policy
+      │
+      ▼
+IAM Role
+      │
+      ▼
+ServiceAccount (cluster-autoscaler)
+      │
+      ▼
+IRSA Annotation
+```
+
+---
+
+# Step 5: Verify the ServiceAccount
+
+Run:
+
+```bash
+kubectl describe sa cluster-autoscaler -n kube-system
+```
+
+You should see:
+
+```text
+Annotations:
+eks.amazonaws.com/role-arn:
+arn:aws:iam::724516859343:role/eksctl-srinivas-addon-iamserviceaccount-...
+```
+
+If you see this annotation, the ServiceAccount is configured correctly.
+
+---
+
+
 
 
 
