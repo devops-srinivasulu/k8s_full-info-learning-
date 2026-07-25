@@ -1,0 +1,220 @@
+To install **Helm 3** on Ubuntu, follow these steps.
+
+## Method 1: Install Helm using the Official Script (Recommended)
+
+### Step 1: Update the package index
+
+```bash
+sudo apt update
+```
+
+### Step 2: Download the Helm installation script
+
+```bash
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+```
+
+### Step 3: Give execute permission
+
+```bash
+chmod 700 get_helm.sh
+```
+
+### Step 4: Run the script
+
+```bash
+sudo ./get_helm.sh
+```
+
+### Step 5: Verify the installation
+
+```bash
+helm version
+```
+
+Example output:
+
+```bash
+version.BuildInfo{Version:"v3.19.0", GitCommit:"...", GoVersion:"go1.24.x"}
+```
+
+---
+
+# Method 2: Install using the Helm APT Repository
+
+### Step 1: Update packages
+
+```bash
+sudo apt update
+```
+
+### Step 2: Install required packages
+
+```bash
+sudo apt install curl gpg apt-transport-https --yes
+```
+
+### Step 3: Download the Helm GPG key
+
+```bash
+curl https://baltocdn.com/helm/signing.asc | gpg --dearmor | sudo tee /usr/share/keyrings/helm.gpg > /dev/null
+```
+
+### Step 4: Add the Helm repository
+
+```bash
+echo "deb [signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+```
+
+### Step 5: Update package list
+
+```bash
+sudo apt update
+```
+
+### Step 6: Install Helm
+
+```bash
+sudo apt install helm -y
+```
+
+### Step 7: Verify installation
+
+```bash
+helm version
+```
+
+---
+
+# Check Helm Environment
+
+Display Helm environment variables:
+
+```bash
+helm env
+```
+
+---
+
+# Check Current Repositories
+
+Initially:
+
+```bash
+helm repo list
+```
+
+Output:
+
+```bash
+Error: no repositories to show
+```
+
+---
+
+# Add a Repository (Example: Bitnami)
+
+```bash
+helm repo add bitnami https://charts.bitnami.com/bitnami
+```
+
+Update repositories:
+
+```bash
+helm repo update
+```
+
+Verify:
+
+```bash
+helm repo list
+```
+
+Output:
+
+```bash
+NAME      URL
+bitnami   https://charts.bitnami.com/bitnami
+```
+
+---
+
+# Search Available Charts
+
+Search all charts:
+
+```bash
+helm search repo
+```
+
+Search for Nginx:
+
+```bash
+helm search repo nginx
+```
+
+Example:
+
+```bash
+helm search repo nginx
+```
+
+Output:
+
+```text
+NAME                    CHART VERSION   APP VERSION   DESCRIPTION
+bitnami/nginx           21.x.x          1.29.x        NGINX Open Source web server
+```
+
+---
+
+# Install a Chart
+
+```bash
+helm install my-nginx bitnami/nginx
+```
+
+Check the release:
+
+```bash
+helm list
+```
+
+---
+
+# Uninstall a Release
+
+```bash
+helm uninstall my-nginx
+```
+
+---
+
+# Check Helm Help
+
+```bash
+helm --help
+```
+
+---
+
+## Verify Kubernetes Connection
+
+Before using Helm with a cluster, make sure `kubectl` is configured correctly:
+
+```bash
+kubectl cluster-info
+kubectl get nodes
+```
+
+If these commands work, Helm will be able to interact with your Kubernetes cluster.
+
+Since you're learning Helm deeply, after installation the next logical topics are:
+
+1. Helm architecture
+2. Helm charts and directory structure
+3. `Chart.yaml`, `values.yaml`, and `templates/`
+4. Built-in template objects
+5. Go templating in Helm
+6. Installing, upgrading, rolling back, and uninstalling releases
+7. Creating and publishing your own Helm charts with real-world DevOps examples.
