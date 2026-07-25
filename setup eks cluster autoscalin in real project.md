@@ -137,6 +137,7 @@ the expected out put :
     }
 }
 ```
+copy the ARN  here and use in the next command
 
 # Step 5: Associate OIDC Provider
 
@@ -157,7 +158,7 @@ Without this, ServiceAccounts cannot assume IAM roles.
 
 This is where your issue occurred.
 
-Create the ServiceAccount:
+Create the ServiceAccount: ( repleace ARN paste here that copied ARN)
 
 ```bash
 eksctl create iamserviceaccount \
@@ -229,33 +230,9 @@ helm install cluster-autoscaler autoscaler/cluster-autoscaler \
   --namespace kube-system \
   --set autoDiscovery.clusterName=srinivas \
   --set awsRegion=us-east-1 \
-  --set serviceAccount.create=false \
-  --set serviceAccount.name=cluster-autoscaler
+  --set rbac.serviceAccount.create=false \
+  --set rbac.serviceAccount.name=cluster-autoscaler
 ```
-
-This tells Helm to use the IRSA-enabled ServiceAccount you created in Step 6.
-
----
-
-# What Happened in Your Cluster?
-
-You installed the chart like this:
-
-```bash
-helm install cluster-autoscaler ...
-```
-
-without specifying an existing ServiceAccount. 
-
-Helm therefore created its own ServiceAccount:
-
-```text
-cluster-autoscaler-aws-cluster-autoscaler
-```
-
-That ServiceAccount had **no IAM role annotation**, so the pod fell back to using the EC2 worker node's IAM role.
-
----
 
 # Step 10: Check the Pod
 
@@ -268,115 +245,26 @@ Expected:
 ```text
 cluster-autoscaler-xxxxxxxx Running
 ```
-
-In your case it showed:
-
-```text
-CrashLoopBackOff
-```
-
-because it couldn't call the AWS Auto Scaling API. 
-
----
-
-# Step 11: Check the Logs
-
+Check the Auto Scaling Group:
 ```bash
-kubectl logs -n kube-system <cluster-autoscaler-pod>
+aws autoscaling describe-auto-scaling-groups \
+  --region us-east-1 \
+  --query "AutoScalingGroups[*].[AutoScalingGroupName,DesiredCapacity,MinSize,MaxSize]"
 ```
-
-You previously saw an error similar to:
-
-```text
-AccessDenied:
-autoscaling:DescribeAutoScalingGroups
-```
-
-That was the key clue that the pod was **not using the correct IAM role**.
-
----
-
-# Step 12: Verify the Deployment Uses the Correct ServiceAccount
-
+expected out:
 ```bash
-kubectl get deployment cluster-autoscaler-aws-cluster-autoscaler \
-  -n kube-system -o yaml | grep serviceAccountName
+[
+    [
+        "eks-ng-0b5be796-7acfcc99-80c5-f40a-b640-54bae4aa5d7b",
+        2,
+        2,
+        2
+    ]
+]
+
 ```
 
-Expected:
-
-```text
-serviceAccountName: cluster-autoscaler
-```
-
-If it instead shows:
-
-```text
-serviceAccountName: cluster-autoscaler-aws-cluster-autoscaler
-```
-
-then Helm is still using its own ServiceAccount.
-
----
-
-# Step 13: Test Scaling
-
-Deploy an application:
-
-```bash
-kubectl apply -f deployment.yaml
-```
-
-Create an HPA:
-
-```bash
-kubectl apply -f hpa.yaml
-```
-
-Generate CPU load:
-
-```bash
-kubectl run load-generator \
-  --image=busybox \
-  -- /bin/sh -c "while true; do wget -q -O- http://<service-name>; done"
-```
-
-Flow:
-
-```text
-CPU Usage ↑
-      │
-      ▼
-Metrics Server
-      │
-      ▼
-HPA
-      │
-      ▼
-More Pods
-      │
-      ▼
-Pods Pending?
-      │
-      ▼
-Cluster Autoscaler
-      │
-      ▼
-AWS Auto Scaling Group
-      │
-      ▼
-Launch New EC2 Instance
-      │
-      ▼
-Node Joins Cluster
-      │
-      ▼
-Pending Pods Scheduled
-```
-
----
-
-# Components and Their Responsibilities
+Auto scaling working process:
 
 | Component          | Responsibility                                                |
 | ------------------ | ------------------------------------------------------------- |
@@ -389,16 +277,243 @@ Pending Pods Scheduled
 
 ---
 
-## Why Your Cluster Autoscaler Crashed
+=============================================================================================================
+now how to check that either autosscaling working or not 
 
-The root cause was:
+Excellent! 🎉
 
-1. You correctly created an IRSA-enabled ServiceAccount for the **AWS Load Balancer Controller**. 
-2. You installed the Cluster Autoscaler Helm chart without configuring it to use an IRSA-enabled ServiceAccount. 
-3. Helm created its own ServiceAccount.
-4. That ServiceAccount had no IAM role annotation.
-5. The pod used the EC2 node IAM role instead.
-6. The node IAM role did not have the required Auto Scaling permissions.
-7. AWS returned `AccessDenied`, and the Cluster Autoscaler failed to start correctly.
+Your Cluster Autoscaler is now **running successfully**.
 
-Once the Deployment is configured to use the correct IRSA-enabled ServiceAccount with the `AmazonEKSClusterAutoscalerPolicy`, the Cluster Autoscaler should be able to communicate with the Auto Scaling Group and run normally.
+From your output:
+
+```text
+cluster-autoscaler-aws-cluster-autoscaler-5ff75784bd-hq9dg   1/1 Running
+```
+
+and
+
+```text
+serviceAccountName: cluster-autoscaler
+```
+
+This confirms:
+
+* ✅ Cluster Autoscaler is running.
+* ✅ It is using the correct `cluster-autoscaler` ServiceAccount.
+* ✅ IRSA is configured correctly.
+* ✅ The previous `AccessDenied` issue has been resolved.
+
+Now let's verify that **Cluster Autoscaler actually works**.
+
+---
+
+# How Cluster Autoscaler Works
+
+There are **two scenarios** to test:
+
+### Scale Up
+
+When there are **Pending Pods** because the cluster doesn't have enough resources, Cluster Autoscaler should **add a new EC2 node**.
+
+### Scale Down
+
+When a node is underutilized and its Pods can be moved elsewhere, Cluster Autoscaler should **remove the extra EC2 node** after a delay.
+
+We'll test **Scale Up** first.
+
+---
+
+# Step 1: Check the Current Number of Nodes
+
+```bash
+kubectl get nodes
+```
+
+Example:
+
+```text
+NAME                           STATUS   ROLES    AGE
+ip-192-168-10-10.ec2.internal  Ready    <none>   30m
+ip-192-168-20-15.ec2.internal  Ready    <none>   30m
+```
+
+Suppose you have **2 nodes**.
+
+---
+
+# Step 2: Check the Auto Scaling Group
+
+Find your node group:
+
+```bash
+aws autoscaling describe-auto-scaling-groups \
+  --region us-east-1 \
+  --query "AutoScalingGroups[*].[AutoScalingGroupName,DesiredCapacity,MinSize,MaxSize]"
+```
+
+Example:
+
+```text
+my-nodegroup-asg    2    2    5
+```
+
+This means:
+
+* Min = 2
+* Desired = 2
+* Max = 5
+
+Cluster Autoscaler can scale up to **5 nodes**.
+
+---
+
+# Step 3: Create a Large Deployment
+
+Create a file named `inflate.yaml`:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inflate
+spec:
+  replicas: 20
+  selector:
+    matchLabels:
+      app: inflate
+  template:
+    metadata:
+      labels:
+        app: inflate
+    spec:
+      containers:
+      - name: inflate
+        image: registry.k8s.io/pause:3.9
+        resources:
+          requests:
+            cpu: "1000m"
+            memory: "1Gi"
+```
+
+Apply it:
+
+```bash
+kubectl apply -f inflate.yaml
+```
+
+---
+then check posds are under pending state why because there is only two worker nodes present :
+```bash
+kubectl get pods
+```
+```text
+inflate-xxxxx   Pending
+inflate-yyyyy   Pending
+inflate-zzzzz   Running
+```
+Some Pods will remain **Pending** because there isn't enough CPU or memory on the current nodes.
+
+
+# Step 4: Watch the Pods
+
+```bash
+kubectl get pods -w
+```
+you can e only 2 worker nodes only 
+
+---
+
+
+# Step 7: Verify in AWS
+
+Open the AWS Console:
+
+**EC2 → Auto Scaling Groups**
+here now click on the autoscaling group.
+
+You should see:
+
+```text
+Desired Capacity
+2 → 2
+```
+click on "edit "
+ then
+ increase the number at 
+ ```text
+ Max desired capacity
+ ```
+as 10 .
+then you can see the number of worker nodes will be increased .
+
+
+Then go to:
+
+**EC2 → Instances**
+
+A new EC2 instance should appear and transition to the `running` state.
+
+---
+
+# Step 8: Check Kubernetes Again
+
+Run:
+
+```bash
+kubectl get nodes
+```
+
+You should now see:
+
+```text
+
+# Complete Flow
+
+```text
+Create Deployment
+        │
+        ▼
+Pods Created
+        │
+        ▼
+Enough Resources?
+        │
+   Yes ─────────► Pods Run
+        │
+        No
+        ▼
+Pods Stay Pending
+        │
+        ▼
+Cluster Autoscaler Detects Pending Pods
+        │
+        ▼
+Calls AWS Auto Scaling Group
+        │
+        ▼
+ASG Launches New EC2 Instance
+        │
+        ▼
+New Node Joins the Cluster
+        │
+        ▼
+Scheduler Places Pending Pods
+        │
+        ▼
+All Pods Become Running
+```
+
+---
+
+## Production Note
+
+In real production environments, Cluster Autoscaler is commonly used together with the **Horizontal Pod Autoscaler (HPA)**:
+
+1. HPA increases the number of Pods when CPU or memory usage is high.
+2. If those new Pods cannot be scheduled because the cluster lacks capacity, they become `Pending`.
+3. Cluster Autoscaler detects the Pending Pods and adds worker nodes.
+4. When traffic decreases, HPA reduces the number of Pods.
+5. After nodes become underutilized for a period, Cluster Autoscaler removes the extra nodes.
+
+This combination provides both **pod-level scaling** and **node-level scaling**, which is the standard autoscaling architecture for production EKS clusters.
+
