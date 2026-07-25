@@ -106,7 +106,19 @@ This command fetches the cluster details and updates your local kubeconfig.
 
 ---
 
-## Step 2: Create an IAM OIDC Provider for Your Cluster
+## Step 2: Create an IAM OIDC Provider for Your Cluster 
+hint : first check that in your eks cluster if you already have OIDC 
+```bash
+aws eks describe-cluster \
+  --name srinivas \
+  --region us-east-1 \
+  --query "cluster.identity.oidc.issuer"
+```
+if already exist it will return like :
+```test
+"https://oidc.eks.us-east-1.amazonaws.com/id/D17260330779C92D4C5FB41E20E40091"
+```
+if it return nothing follow these steps .. otherwisse proceed with step 3
 
 Set your cluster name in an environment variable:
 
