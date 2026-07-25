@@ -165,6 +165,26 @@ aws iam create-policy \
     --policy-name AWSLoadBalancerControllerIAMPolicy \
     --policy-document file://iam_policy.json
 ```
+if it return this error :
+```text
+
+aws: [ERROR]: An error occurred (EntityAlreadyExists) when calling the CreatePolicy operation: A policy called AWSLoadBalancerControllerIAMPolicy already exists. Duplicate names are not allowed.
+
+
+```
+then Find the policy ARN:
+
+```bash
+aws iam list-policies \
+  --scope Local \
+  --query "Policies[?PolicyName=='AWSLoadBalancerControllerIAMPolicy'].Arn" \
+  --output text
+```
+the expected output :
+```text
+arn:aws:iam::724516859343:policy/AWSLoadBalancerControllerIAMPolicy
+
+```
 
 ### 3.2 – Create the IAM Service Account
 
@@ -172,15 +192,26 @@ Create the IAM service account for the AWS Load Balancer Controller using `eksct
 
 ```bash
 eksctl create iamserviceaccount \
-    --cluster=ekswithavinash \
-    --namespace=kube-system \
-    --name=aws-load-balancer-controller \
-    --attach-policy-arn=arn:aws:iam::<<account-id>>:policy/AWSLoadBalancerControllerIAMPolicy \
-    --override-existing-serviceaccounts \
-    --region ap-south-1 \
-    --approve
+  --cluster=srinivas \
+  --region=us-east-1 \
+  --namespace=kube-system \
+  --name=aws-load-balancer-controller \
+  --attach-policy-arn=arn:aws:iam::<ACCOUNT_ID>:policy/AWSLoadBalancerControllerIAMPolicy \
+  --override-existing-serviceaccounts \
+  --approve
 ```
+Step 2.1: Install Cert Manager
 
+The AWS Load Balancer Controller uses webhooks that require certificates.
+
+Install it:
+```bash
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+```
+Wait until all pods are running:
+```bash
+kubectl get pods -n cert-manager
+```
 ### 3.3 – Install the AWS Load Balancer Controller
 
 Add the Helm repository and update it:
@@ -195,9 +226,18 @@ Install the AWS Load Balancer Controller:
 ```bash
 helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
   -n kube-system \
-  --set clusterName=ekswithavinash \
+  --set clusterName=srinivas \
   --set serviceAccount.create=false \
-  --set serviceAccount.name=aws-load-balancer-controller
+  --set serviceAccount.name=aws-load-balancer-controller \
+  --set region=us-east-1 \
+  --set vpcId=<YOUR_VPC_ID>
+```
+find your vpc id if needed by the command
+```bash
+aws eks describe-cluster \
+  --name srinivas \
+  --region us-east-1 \
+  --query "cluster.resourcesVpcConfig.vpcId"
 ```
 
 ### 3.4 – Verify the Controller Deployment
